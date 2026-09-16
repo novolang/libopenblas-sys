@@ -1,0 +1,299 @@
+// API tests for the CBLAS bindings over libopenblas.
+//
+// Every test below calls into the C library, so the suite needs
+// OpenBLAS installed and linked.  `novo pkg build` type-checks the
+// declarations without it; `novo test` runs them and does not.
+//
+// Every test computes in memory, so the suite reads and writes nothing.
+//
+// OpenBLAS was not installed on the machine where this package was
+// written, so the suite has never been linked.  Treat every assertion
+// below as unmeasured.
+
+use std.test
+use libopenblas
+
+// `CblasRowMajor`.
+const ROW_MAJOR: Int = 101
+
+// `CblasNoTrans` and `CblasTrans`.
+const NO_TRANS: Int = 111
+const TRANS: Int = 112
+
+// `CblasUpper` and `CblasLower`.
+const UPPER: Int = 121
+const LOWER: Int = 122
+
+// `CblasNonUnit`.
+const NON_UNIT: Int = 131
+
+// `CblasLeft`.
+const LEFT: Int = 141
+
+// How far apart two doubles may be and still count as the same answer.
+const TOLERANCE: Float = 0.000000001
+
+// Write one double into the `i`th eight-byte element of a vector.
+fn put(base: Int, i: Int, v: Float)
+    ptr.write_word(base + i * 8, float.to_bits(v))
+
+// Read the `i`th element of a vector back.
+fn get(base: Int, i: Int) -> Float
+    return float.from_bits(ptr.read_word(base + i * 8))
+
+// Reserve `n` elements and fill them with zero.
+fn zeros(n: Int) -> Int
+    let base = ptr.alloc(n * 8)
+    for i in 0..n
+        put(base, i, 0.0)
+    return base
+
+// Whether two doubles are the same answer.
+fn same(a: Float, b: Float) -> Bool
+    return math.abs(a - b) < TOLERANCE
+
+// The library says which processor kernel it chose and how many threads
+// it may use, and the thread count round-trips.
+@test
+fn test_the_library_reports_its_build_and_its_threads() [io, ffi]
+    test.case("openblas_get_config, openblas_get_corename, openblas_get_parallel")
+    test.assert(str.len(ptr.read_str(libopenblas.openblas_get_config())) > 0)
+    test.assert(str.len(ptr.read_str(libopenblas.openblas_get_corename())) > 0)
+    // 0 is sequential, 1 is the library's own pool, 2 is OpenMP.
+    let parallel = libopenblas.openblas_get_parallel() as i32
+    test.assert(parallel >= 0)
+    test.assert(parallel <= 2)
+    test.assert(libopenblas.openblas_get_num_procs() as i32 >= 1)
+    libopenblas.openblas_set_num_threads(1)
+    test.assert(libopenblas.openblas_get_num_threads() as i32 == 1)
+
+// The dot product, the two norms and the position of the largest
+// element, over the vectors 1..4 and 5..8.
+@test
+fn test_the_dot_product_and_the_two_norms() [io, ffi]
+    test.case("cblas_ddot, cblas_dnrm2, cblas_dasum, cblas_idamax")
+    let x = zeros(4)
+    let y = zeros(4)
+    for i in 0..4
+        put(x, i, int.to_float(i + 1))
+        put(y, i, int.to_float(i + 5))
+    // 1*5 + 2*6 + 3*7 + 4*8.
+    test.assert(same(libopenblas.cblas_ddot(4, x, 1, y, 1), 70.0))
+    // 1 + 4 + 9 + 16 under a square root.
+    test.assert(same(libopenblas.cblas_dnrm2(4, x, 1), math.sqrt(30.0)))
+    test.assert(same(libopenblas.cblas_dasum(4, x, 1), 10.0))
+    // The answer counts from zero, so the last of four elements is 3.
+    test.assert(libopenblas.cblas_idamax(4, x, 1) == 3)
+    // A stride of 2 reads the first and the third elements only.
+    test.assert(same(libopenblas.cblas_ddot(2, x, 2, y, 2), 26.0))
+    ptr.free(y)
+    ptr.free(x)
+
+// A vector is scaled, copied, swapped and accumulated into another.
+@test
+fn test_a_vector_is_scaled_copied_swapped_and_accumulated() [io, ffi]
+    test.case("cblas_dscal, cblas_dcopy, cblas_dswap, cblas_daxpy")
+    let x = zeros(3)
+    let y = zeros(3)
+    put(x, 0, 1.0)
+    put(x, 1, 2.0)
+    put(x, 2, 3.0)
+    libopenblas.cblas_dcopy(3, x, 1, y, 1)
+    test.assert(same(get(y, 2), 3.0))
+    libopenblas.cblas_dscal(3, 2.0, y, 1)
+    test.assert(same(get(y, 0), 2.0))
+    test.assert(same(get(y, 2), 6.0))
+    // y becomes y + 3x: 2 + 3, 4 + 6, 6 + 9.
+    libopenblas.cblas_daxpy(3, 3.0, x, 1, y, 1)
+    test.assert(same(get(y, 0), 5.0))
+    test.assert(same(get(y, 1), 10.0))
+    test.assert(same(get(y, 2), 15.0))
+    libopenblas.cblas_dswap(3, x, 1, y, 1)
+    test.assert(same(get(x, 0), 5.0))
+    test.assert(same(get(y, 0), 1.0))
+    ptr.free(y)
+    ptr.free(x)
+
+// The plane rotation that carries (3, 4) onto the first axis has length
+// 5, and applying it to the same point leaves nothing on the second.
+@test
+fn test_a_plane_rotation_carries_a_point_onto_the_first_axis() [io, ffi]
+    test.case("cblas_drotg then cblas_drot")
+    let a = ptr.alloc_word()
+    let b = ptr.alloc_word()
+    let c = ptr.alloc_word()
+    let s = ptr.alloc_word()
+    ptr.write_word(a, float.to_bits(3.0))
+    ptr.write_word(b, float.to_bits(4.0))
+    libopenblas.cblas_drotg(a, b, c, s)
+    // `a` is overwritten with the length of the point.
+    test.assert(same(float.from_bits(ptr.read_word(a)), 5.0))
+    let x = zeros(1)
+    let y = zeros(1)
+    put(x, 0, 3.0)
+    put(y, 0, 4.0)
+    libopenblas.cblas_drot(1, x, 1, y, 1,
+                           float.from_bits(ptr.read_word(c)),
+                           float.from_bits(ptr.read_word(s)))
+    test.assert(same(get(x, 0), 5.0))
+    test.assert(same(get(y, 0), 0.0))
+    ptr.free(y)
+    ptr.free(x)
+    ptr.free(s)
+    ptr.free(c)
+    ptr.free(b)
+    ptr.free(a)
+
+// A two by two matrix times a vector, the symmetric form of the same
+// call, and the outer product that writes a matrix.
+@test
+fn test_a_matrix_multiplies_a_vector() [io, ffi]
+    test.case("cblas_dgemv, cblas_dsymv, cblas_dger")
+    // A = [[1, 2], [3, 4]] in row-major order, so the leading dimension
+    // is 2: two elements between the start of one row and the next.
+    let a = zeros(4)
+    put(a, 0, 1.0)
+    put(a, 1, 2.0)
+    put(a, 2, 3.0)
+    put(a, 3, 4.0)
+    let x = zeros(2)
+    put(x, 0, 1.0)
+    put(x, 1, 1.0)
+    let y = zeros(2)
+    libopenblas.cblas_dgemv(ROW_MAJOR, NO_TRANS, 2, 2, 1.0, a, 2, x, 1, 0.0, y, 1)
+    test.assert(same(get(y, 0), 3.0))
+    test.assert(same(get(y, 1), 7.0))
+    // Transposed, the columns are summed instead of the rows.
+    libopenblas.cblas_dgemv(ROW_MAJOR, TRANS, 2, 2, 1.0, a, 2, x, 1, 0.0, y, 1)
+    test.assert(same(get(y, 0), 4.0))
+    test.assert(same(get(y, 1), 6.0))
+    // The upper triangle of A is [[1, 2], [_, 4]], and the symmetric
+    // matrix it stands for is [[1, 2], [2, 4]].
+    libopenblas.cblas_dsymv(ROW_MAJOR, UPPER, 2, 1.0, a, 2, x, 1, 0.0, y, 1)
+    test.assert(same(get(y, 0), 3.0))
+    test.assert(same(get(y, 1), 6.0))
+    // The outer product of two vectors of ones is a matrix of ones,
+    // added on top of A.
+    libopenblas.cblas_dger(ROW_MAJOR, 2, 2, 1.0, x, 1, x, 1, a, 2)
+    test.assert(same(get(a, 0), 2.0))
+    test.assert(same(get(a, 3), 5.0))
+    ptr.free(y)
+    ptr.free(x)
+    ptr.free(a)
+
+// A triangular matrix multiplies a vector and then solves for it again,
+// which returns the vector it started from.
+@test
+fn test_a_triangular_matrix_multiplies_a_vector_and_solves_for_it() [io, ffi]
+    test.case("cblas_dtrmv then cblas_dtrsv")
+    // The lower triangle of [[2, _], [1, 2]].
+    let a = zeros(4)
+    put(a, 0, 2.0)
+    put(a, 1, 0.0)
+    put(a, 2, 1.0)
+    put(a, 3, 2.0)
+    let x = zeros(2)
+    put(x, 0, 1.0)
+    put(x, 1, 1.0)
+    libopenblas.cblas_dtrmv(ROW_MAJOR, LOWER, NO_TRANS, NON_UNIT, 2, a, 2, x, 1)
+    test.assert(same(get(x, 0), 2.0))
+    test.assert(same(get(x, 1), 3.0))
+    // Solving with the same matrix undoes the multiplication.
+    libopenblas.cblas_dtrsv(ROW_MAJOR, LOWER, NO_TRANS, NON_UNIT, 2, a, 2, x, 1)
+    test.assert(same(get(x, 0), 1.0))
+    test.assert(same(get(x, 1), 1.0))
+    ptr.free(x)
+    ptr.free(a)
+
+// The identity matrix multiplied by A gives A back, whichever routine
+// does the multiplying.
+@test
+fn test_two_matrices_are_multiplied() [io, ffi]
+    test.case("cblas_dgemm, cblas_dsymm")
+    let a = zeros(4)
+    put(a, 0, 1.0)
+    put(a, 1, 2.0)
+    put(a, 2, 3.0)
+    put(a, 3, 4.0)
+    // The two by two identity.
+    let id = zeros(4)
+    put(id, 0, 1.0)
+    put(id, 3, 1.0)
+    let c = zeros(4)
+    libopenblas.cblas_dgemm(ROW_MAJOR, NO_TRANS, NO_TRANS, 2, 2, 2,
+                            1.0, a, 2, id, 2, 0.0, c, 2)
+    test.assert(same(get(c, 0), 1.0))
+    test.assert(same(get(c, 1), 2.0))
+    test.assert(same(get(c, 2), 3.0))
+    test.assert(same(get(c, 3), 4.0))
+    // A beta of 1 adds the product on top of what C already holds.
+    libopenblas.cblas_dgemm(ROW_MAJOR, TRANS, NO_TRANS, 2, 2, 2,
+                            1.0, a, 2, id, 2, 1.0, c, 2)
+    test.assert(same(get(c, 1), 5.0))
+    test.assert(same(get(c, 2), 5.0))
+    // The identity is symmetric, so multiplying by it from the left is
+    // the same answer again.
+    let d = zeros(4)
+    libopenblas.cblas_dsymm(ROW_MAJOR, LEFT, UPPER, 2, 2, 1.0, id, 2, a, 2, 0.0, d, 2)
+    test.assert(same(get(d, 0), 1.0))
+    test.assert(same(get(d, 3), 4.0))
+    ptr.free(d)
+    ptr.free(c)
+    ptr.free(id)
+    ptr.free(a)
+
+// A rank update writes one triangle of the answer and leaves the other
+// one where it was.
+@test
+fn test_a_rank_update_writes_one_triangle() [io, ffi]
+    test.case("cblas_dsyrk, cblas_dsyr2k")
+    // A is the column [1, 2], stored as two rows of one element.
+    let a = zeros(2)
+    put(a, 0, 1.0)
+    put(a, 1, 2.0)
+    let c = zeros(4)
+    // A times its own transpose is [[1, 2], [2, 4]], upper triangle only.
+    libopenblas.cblas_dsyrk(ROW_MAJOR, UPPER, NO_TRANS, 2, 1, 1.0, a, 1, 0.0, c, 2)
+    test.assert(same(get(c, 0), 1.0))
+    test.assert(same(get(c, 1), 2.0))
+    test.assert(same(get(c, 3), 4.0))
+    // The lower triangle was not written, so it is still zero.
+    test.assert(same(get(c, 2), 0.0))
+    let b = zeros(2)
+    put(b, 0, 1.0)
+    put(b, 1, 1.0)
+    let e = zeros(4)
+    // A Bᵀ + B Aᵀ, which doubles the symmetric part of the product.
+    libopenblas.cblas_dsyr2k(ROW_MAJOR, UPPER, NO_TRANS, 2, 1, 1.0, a, 1, b, 1, 0.0, e, 2)
+    test.assert(same(get(e, 0), 2.0))
+    test.assert(same(get(e, 1), 3.0))
+    test.assert(same(get(e, 3), 4.0))
+    ptr.free(e)
+    ptr.free(b)
+    ptr.free(c)
+    ptr.free(a)
+
+// A triangular matrix multiplies a block of right-hand sides and then
+// solves for the block again.
+@test
+fn test_a_triangular_matrix_multiplies_and_solves_a_block() [io, ffi]
+    test.case("cblas_dtrmm then cblas_dtrsm")
+    // The lower triangle of [[2, _], [1, 2]].
+    let a = zeros(4)
+    put(a, 0, 2.0)
+    put(a, 2, 1.0)
+    put(a, 3, 2.0)
+    // One right-hand side, held as a two by one block.
+    let b = zeros(2)
+    put(b, 0, 1.0)
+    put(b, 1, 1.0)
+    libopenblas.cblas_dtrmm(ROW_MAJOR, LEFT, LOWER, NO_TRANS, NON_UNIT,
+                            2, 1, 1.0, a, 2, b, 1)
+    test.assert(same(get(b, 0), 2.0))
+    test.assert(same(get(b, 1), 3.0))
+    libopenblas.cblas_dtrsm(ROW_MAJOR, LEFT, LOWER, NO_TRANS, NON_UNIT,
+                            2, 1, 1.0, a, 2, b, 1)
+    test.assert(same(get(b, 0), 1.0))
+    test.assert(same(get(b, 1), 1.0))
+    ptr.free(b)
+    ptr.free(a)

@@ -1,0 +1,42 @@
+[package]
+name        = "libopenblas-sys"
+version     = "0.1.0"
+description = "Bindings over libopenblas, through the CBLAS interface: the double-precision vector, matrix-vector and matrix-matrix routines of levels 1, 2 and 3, and the OpenBLAS thread and build queries, one declaration per C entry point."
+license     = "Apache-2.0"
+
+# NOT a `0.0.x` draft.  An interface release is the shape whose every
+# `pub fn` body is a `todo()`, and every `pub fn` here is an `@ffi`
+# declaration with no body at all — `novo pkg publish` reads that as a
+# release with bodies and refuses a `0.0.x` version for it.
+stability   = "experimental"
+
+# `sys`: the layer for a package that binds one C library and decides
+# nothing of its own.  Every `pub fn` below is an `@ffi` declaration of
+# a function in libopenblas.
+layer       = "sys"
+
+category    = "bindings"
+
+# The one C library.  `libopenblas.so` is what the loader resolves
+# these symbols against; installing this package does not install it.
+wraps       = "libopenblas"
+
+tags        = ["ffi", "openblas", "blas", "cblas", "linear-algebra", "matrix", "bindings"]
+repository  = "https://github.com/novolang/libopenblas-sys"
+maintainers = ["novo-lang"]
+novo        = ">= 0.8.9"
+
+[docs.pages]
+"README.md" = "The CBLAS entry points of libopenblas, one novo-lang declaration each"
+
+[dependencies]
+# None.  A binding over one C library depends on no novo-lang package.
+
+# The link flag for the `library = "openblas"` name every declaration
+# in `src/` carries.  `libopenblas-dev` installs
+# `/usr/lib/<arch>/pkgconfig/openblas.pc`, so pkg-config answers
+# `-lopenblas` on Debian and Ubuntu.  Without the block the default is
+# `-lopenblas`, which is the same flag on a system that put the library
+# somewhere the linker already looks.
+[ffi.openblas]
+pkg_config = "openblas"
