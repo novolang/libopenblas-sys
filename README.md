@@ -1,27 +1,27 @@
 # libopenblas-sys
 
 BLAS, the Basic Linear Algebra Subprograms, is a specification of the
-operations a program performs on vectors and matrices: a dot product, a
-matrix times a vector, a matrix times a matrix. It is specified by
+operations a program performs on vectors and matrices, such as a dot
+product, a matrix times a vector and a matrix times a matrix. It is
+specified by
 [the BLAS Technical Forum standard](https://www.netlib.org/blas/blast-forum/),
 and its C form is
-[CBLAS](https://www.netlib.org/blas/#_cblas). OpenBLAS is an
-implementation of it whose inner loops are written in assembly for each
+[CBLAS](https://www.netlib.org/blas/#_cblas). OpenBLAS is an optimised
+BLAS library based on GotoBLAS2, with kernels written for each
 processor family, and it is documented at
 [openblas.net](https://www.openblas.net/). This package declares
-twenty-seven of that library's entry points to novo-lang, one
-declaration each.
+twenty-seven of its entry points to novo-lang, one declaration each.
 
-**Status: a binding, not a port.** Every function in this package is a
-declaration of a function in libopenblas. The package contains no logic
-of its own, and it does nothing without the C library installed. The
-twenty-seven entry points are the double-precision BLAS routines and
-the six queries OpenBLAS adds to them; the section "What is not
-included" says what a program still cannot do with them alone.
+Every function here is a declaration of a function in libopenblas. The
+package contains no logic of its own, and it does nothing without the C
+library installed. The twenty-seven entry points are twenty-one
+double-precision BLAS routines and six calls OpenBLAS adds to them. The
+section "What is not included" says what a program cannot do with them
+alone.
 
-**Unverified.** OpenBLAS is not installed on the machine where this
-package was written, so the test suite has never been linked. See the
-"Tests" section.
+OpenBLAS is not installed on the machines where this package was
+written and revised, so the test suite has never been linked. The
+section "Tests" says what that means.
 
 ## What it is
 
@@ -46,7 +46,7 @@ many times faster than an obvious one, because each element read is
 used many times.
 
 Almost every routine computes into an existing result rather than
-returning a new one. The shape is `C = alpha * (something) + beta * C`:
+returning a new one. The shape is `C = alpha * (something) + beta * C`.
 `alpha` scales the product, `beta` scales what the destination already
 holds, and a `beta` of zero overwrites it. The destination is one of
 the arguments, and it is written in place.
@@ -107,9 +107,8 @@ fn main() [io, ffi]
     ptr.free(a)
 ```
 
-The example is fenced as an illustration rather than a compiled block
-because `novo doc` compiles the blocks in documentation comments and
-not the ones in this file. The same calls are in
+The example is not compiled, because it links against libopenblas and
+the link fails where that library is not installed. The same calls are in
 `tests/libopenblas_tests.nv`.
 
 ## What the package contains
@@ -125,7 +124,7 @@ The four groups and their sizes:
 | Level 1 | 10 | Dot product, the two norms, the position of the largest element, scaling, copying, swapping, accumulation and the plane rotation. |
 | Level 2 | 5 | A matrix times a vector, in the general, symmetric and triangular forms, and the outer product. |
 | Level 3 | 6 | A matrix times a matrix, in the general, symmetric and triangular forms, and the two rank updates. |
-| OpenBLAS runtime | 6 | Sets and reads the thread count, counts the processors, and names the build and the processor kernel. |
+| OpenBLAS runtime | 6 | Sets and reads the thread count, counts the processors, and names the build, the processor kernel and the threading model. |
 
 ## How to choose an entry point
 
@@ -140,13 +139,14 @@ general routine.
 `cblas_dtrsm` solves rather than multiplies, and it is how the result
 of a factorisation is applied to a right-hand side.
 
-The level 2 routines have the same four shapes for a single vector. Use
-them when there is one right-hand side rather than a block of them; use
-level 3 when there are several, because one level 3 call is faster than
-the same work as a loop of level 2 calls.
+The level 2 routines cover the same shapes for a single vector. Use
+them when there is one right-hand side. Use level 3 when there are
+several, because one level 3 call is faster than the same work as a
+loop of level 2 calls.
 
-`openblas_set_num_threads` belongs in a program that parallelises above
-the BLAS. Set it to 1 there, or the two layers of threads multiply.
+`openblas_set_num_threads` belongs in a program that runs its own
+threads above the BLAS. Set it to 1 there, or each of the program's
+threads starts threads of its own inside OpenBLAS.
 
 ## The rules a user needs
 
@@ -167,7 +167,7 @@ the BLAS. Set it to 1 there, or the two layers of threads multiply.
    | `CblasColMajor` | 102 | the elements of a column are next to each other |
    | `CblasNoTrans` | 111 | use the operand as it stands |
    | `CblasTrans` | 112 | transpose the operand first |
-   | `CblasConjTrans` | 113 | the complex case; for a real matrix it is 112 |
+   | `CblasConjTrans` | 113 | the conjugate transpose, which for a real matrix is 112 |
    | `CblasUpper` | 121 | the upper triangle holds the matrix |
    | `CblasLower` | 122 | the lower triangle holds it |
    | `CblasNonUnit` | 131 | the diagonal is stored |
@@ -189,21 +189,21 @@ the BLAS. Set it to 1 there, or the two layers of threads multiply.
    `cblas_dsyrk` writes one triangle of its answer and leaves the other
    one as it found it. A program that needs the whole matrix copies the
    triangle across itself.
-8. **A solve does not check for a singular matrix.** `cblas_dtrsv` and
+8. **A solve does not test for a singular matrix.** `cblas_dtrsv` and
    `cblas_dtrsm` divide by the diagonal. A zero there gives an infinity
    or a not-a-number rather than an error.
 9. **An entry point that answers a C `int` answers it in 32 bits.**
    Write `as i32` before comparing the answer with a negative number.
-   The four `openblas_get_` entry points that answer a count are the
-   ones that need it.
+   `openblas_get_num_threads`, `openblas_get_num_procs` and
+   `openblas_get_parallel` answer a C `int`.
 10. **A length, a stride and a leading dimension are `blasint`**, which
     is a C `int` in the ordinary build of OpenBLAS and 64 bits wide in
     a build whose `openblas_get_config` string contains `USE64BITINT`.
     A count is positive, so it crosses unchanged either way.
-11. **A bad argument ends the process.** CBLAS reports it through
-    `cblas_xerbla`, and OpenBLAS's implementation of that prints a line
-    and exits. Check the dimensions before the call; there is no return
-    code to test.
+11. **A bad argument is reported on standard output, not to the
+    caller.** OpenBLAS prints a line naming the routine and the
+    argument, and the routine returns without computing anything. There
+    is no return code to test, so check the dimensions before the call.
 12. **The thread count is global.** `openblas_set_num_threads` applies
     to every later call from every thread in the process.
 
@@ -212,47 +212,51 @@ the BLAS. Set it to 1 there, or the two layers of threads multiply.
 - **The single-precision routines.** `cblas_sgemm`, `cblas_sdot` and
   every other `s` routine take their scalars as a C `float`. The
   novo-lang foreign function interface passes a `Float` as a C
-  `double`, so a `float` parameter receives the trailing mantissa bits
-  of the double and a `float` result is read as a double. An array of
-  single-precision numbers is unaffected — it crosses as an address —
-  but the scalars cannot cross, so the routines cannot be declared.
+  `double`, so a `float` parameter would receive the low bits of the
+  double and a `float` result would be read as a double. An array of
+  single-precision numbers crosses as an address and is unaffected. The
+  scalars cannot cross, so the routines cannot be declared.
 - **The complex routines.** The `c` and `z` routines take their scalars
-  as a pointer to an interleaved pair of numbers, so the interface is
-  expressible. They are left out of the first release.
+  as a pointer to an interleaved pair of numbers, so they can be
+  declared. They are left out of this release.
 - **LAPACK and LAPACKE.** `LAPACKE_dgesv`, `LAPACKE_dgeqrf` and the
-  factorisations are in the same shared object, under a separate
-  interface with its own header. They belong in a package of their own.
+  factorisations are in the same shared object in the usual build, with
+  a header and argument conventions of their own. They are left out of
+  this package.
 - **The Fortran interface.** `dgemm_`, `ddot_` and their neighbours
   take every argument by pointer, including the dimensions and the
   single-character transpose flags. CBLAS is the C interface to the
   same kernels.
 - **`cblas_xerbla`.** It is variadic, and the library calls it rather
   than a program.
+- **The other level 2 and level 3 routines for full storage.**
+  `cblas_dsyr`, `cblas_dsyr2` and their neighbours are left out of this
+  release.
 - **The banded, packed and Hermitian storage layouts.**
   `cblas_dgbmv`, `cblas_dspmv`, `cblas_dtpmv` and their neighbours take
-  a matrix in a storage layout of its own. The full, symmetric and
-  triangular layouts are here.
+  a matrix in a storage layout of its own. They are left out of this
+  release, and the full, symmetric and triangular layouts are here.
 
 ## Related packages
 
-`linalg-nv` is linear algebra written in novo-lang, with no C library.
-It is the port, and it is the reference for what an answer should be.
-This package is the implementation that gets that answer quickly: on a
-matrix product of any size, a tuned BLAS is several times faster than
-a straightforward loop, and the gap widens with the size.
+[ndarray-nv](https://novo-lang.org/packages/ndarray-nv) holds
+n-dimensional arrays of `Float` and `Int` in novo-lang, with no C
+library, and its functions have bodies. It has a matrix multiply of its
+own. It is the choice for a program that must build without a C
+toolchain, or whose matrices are small. This package is the choice for
+a program that spends its time in large matrix products, where a tuned
+BLAS is faster.
 
-Choose `linalg-nv` when the program must build for a microcontroller or
-for WebAssembly, when a C toolchain is not wanted, or when the matrices
-are small enough that the call overhead dominates. Choose this package
-when the program spends its time in matrix arithmetic. `linalg-nv` is
-planned and not published yet.
-
-`ndarray-nv` is the array container the two of them operate on.
+[linalg-nv](https://novo-lang.org/packages/linalg-nv) is dense linear
+algebra over ndarray-nv matrices, such as LU, QR, Cholesky and the
+singular value decomposition, in novo-lang. It is published as an
+interface release. Every function in it is declared and none has a
+body yet. It covers the factorisations this package leaves to LAPACK.
 
 ## Tests
 
-`tests/libopenblas_tests.nv` holds nine tests written against the
-signatures. They call the C library, so `novo test` needs OpenBLAS
+`tests/libopenblas_tests.nv` holds nine tests over the twenty-seven
+entry points. They call the C library, so `novo test` needs OpenBLAS
 installed and linkable:
 
 ```
@@ -265,7 +269,7 @@ installed.
 Every test computes in memory, so the suite reads and writes nothing.
 The level 1 tests assert the dot product, the two norms and the
 zero-based position of the largest element over the vectors 1 to 4 and
-5 to 8, and that a stride of 2 reads half of them. The rotation test
+5 to 8. They also assert that a stride of 2 reads half of them. The rotation test
 asserts that the rotation computed for the point (3, 4) has length 5 and
 leaves nothing on the second axis. The level 2 tests multiply a two by
 two matrix by a vector, transposed and not, and assert that the
@@ -275,24 +279,11 @@ rank update writes one triangle and leaves the other at zero. The two
 triangular tests multiply and then solve, and assert that the vector
 comes back to what it started as.
 
-**Unverified.** OpenBLAS is not installed on the staging machine, so
-the suite has never linked: `novo test` stops at `/usr/bin/ld: cannot
-find -lopenblas`. Every assertion above is written from the CBLAS
-interface and none of them has been observed to pass.
-
-## Implementation status
-
-| Group | State |
-| --- | --- |
-| Level 1, double precision | Complete. |
-| Level 2, double precision | Complete for the full, symmetric and triangular layouts. |
-| Level 3, double precision | Complete for the full, symmetric and triangular layouts. |
-| OpenBLAS runtime | Complete. |
-| Single precision | Absent. A C `float` scalar cannot cross the foreign function interface. |
-| Complex precisions | Absent. Left out of the first release. |
-| Banded and packed layouts | Absent. Left out of the first release. |
-| LAPACK | Absent, and a separate interface. |
-| Fortran interface | Absent, and a separate interface. |
+OpenBLAS is not installed on the machines where this package was
+written and revised, so the suite has never linked. `novo test` stops
+at `/usr/bin/ld: cannot find -lopenblas`. Every assertion above is
+written from the CBLAS interface, and none of them has been observed to
+pass.
 
 ## Licence
 

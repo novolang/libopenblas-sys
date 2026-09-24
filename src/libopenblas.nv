@@ -1,86 +1,125 @@
 // The CBLAS entry points of libopenblas, one novo-lang declaration
 // each.
 //
-// A vector and a matrix are both an address: the caller reserves the
-// bytes with `ptr.alloc`, writes the elements with `ptr.write_bytes_buf`
-// or one word at a time, and reads them back with `ptr.read_bytes_n`.
-// An element is an eight-byte IEEE-754 double, so a vector of `n`
-// elements needs `8 * n` bytes.
+// A vector and a matrix are both an address.  The caller reserves the
+// bytes with `ptr.alloc`, writes the elements with `ptr.write_word` and
+// `float.to_bits`, and reads them back with `ptr.read_word` and
+// `float.from_bits`.  An element is an eight-byte IEEE-754 double, so a
+// vector of `n` elements needs `8 * n` bytes.
 //
-// Every routine below is the DOUBLE-PRECISION one.  The single-precision
-// half of CBLAS takes its scalars as a C `float`, and the novo-lang
-// foreign function interface passes a `Float` as a C `double`, so a
-// `float` argument arrives as the trailing mantissa bits of the double
-// and a `float` result is read as a double.  Neither can be declared
-// here.  The README's "What is not included" section lists them.
+// Every routine below is the double-precision one.  The
+// single-precision half of CBLAS takes its scalars as a C `float`.  The
+// novo-lang foreign function interface passes a `Float` as a C
+// `double`, so a `float` argument would arrive as the low bits of the
+// double and a `float` result would be read as a double.  Neither can
+// be declared here.  The README's "What is not included" section lists
+// them.
 //
 // The order, transpose, triangle, diagonal and side arguments are C
 // enumerations, which are integers.  Their numbers are in the README's
-// "The rules a user needs".
+// section "The rules a user needs".
 //
 // `blasint` is the integer type of a length, a stride and a leading
 // dimension.  In the ordinary build of OpenBLAS it is a C `int`, which
 // is 32 bits wide.  A count is always positive, so it crosses as an
-// `Int` unchanged; a returned `int` needs `as i32` before it is
+// `Int` unchanged.  A returned `int` needs `as i32` before it is
 // compared with a negative number.
+//
+// The examples in these comments are fenced `novo ignore`, so `novo
+// doc` does not compile them.  A compiled example links against
+// libopenblas, and the link fails where that library is not installed.
 
-// ---------------------------------------------------------------------
-// Level 1: vector against vector.
-// ---------------------------------------------------------------------
+// The level 1 routines, which take a vector and a vector.
 
 // Get the dot product of two vectors of `n` elements.
 //
 // `x` and `y` are addresses, and `incx` and `incy` are the strides in
-// elements: 1 walks a contiguous vector, and 2 walks every second
-// element. Answers 0.0 when `n` is zero or negative.
+// elements.  A stride of 1 walks a contiguous vector, and 2 walks every
+// second element.  Answers 0.0 when `n` is zero or negative.
+//
+// ```novo ignore
+// let d = libopenblas.cblas_ddot(4, x, 1, y, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_ddot")
 fn cblas_ddot(n: Int, x: Int, incx: Int, y: Int, incy: Int) -> Float [ffi]
 
-// Get the Euclidean length of a vector: the square root of the sum of
-// the squares of its elements.
+// Get the Euclidean norm of a vector, the square root of the sum of the
+// squares of its elements.
 //
-// The computation is scaled so that a vector whose squares would
-// overflow a double still answers a length.
+// The computation is scaled, so a vector whose squares would overflow a
+// double still answers its norm.
+//
+// ```novo ignore
+// let len = libopenblas.cblas_dnrm2(4, x, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dnrm2")
 fn cblas_dnrm2(n: Int, x: Int, incx: Int) -> Float [ffi]
 
 // Get the sum of the absolute values of a vector's elements.
+//
+// ```novo ignore
+// let total = libopenblas.cblas_dasum(4, x, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dasum")
 fn cblas_dasum(n: Int, x: Int, incx: Int) -> Float [ffi]
 
-// Find the position of the element with the largest absolute value.
+// Find the position of the first element with the largest absolute
+// value.
 //
-// The answer counts from zero, which is where the C interface differs
-// from the Fortran one it is layered over. Answers 0 when `n` is zero.
+// The answer counts from zero, where the Fortran routine beneath counts
+// from one.  Answers 0 when `n` is zero.
+//
+// ```novo ignore
+// let at = libopenblas.cblas_idamax(4, x, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_idamax")
 fn cblas_idamax(n: Int, x: Int, incx: Int) -> Int [ffi]
 
 // Add `alpha` times `x` to `y`, element by element.
 //
-// `y` is written in place and `x` is read. This is the operation the
-// rest of the level builds on.
+// `y` is written in place and `x` is only read.
+//
+// ```novo ignore
+// libopenblas.cblas_daxpy(3, 3.0, x, 1, y, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_daxpy")
 fn cblas_daxpy(n: Int, alpha: Float, x: Int, incx: Int, y: Int, incy: Int) [ffi]
 
 // Multiply every element of a vector by `alpha`, in place.
+//
+// ```novo ignore
+// libopenblas.cblas_dscal(4, 0.5, x, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dscal")
 fn cblas_dscal(n: Int, alpha: Float, x: Int, incx: Int) [ffi]
 
 // Copy `n` elements of `x` into `y`.
 //
-// The two vectors may have different strides. They may not overlap.
+// The two vectors may have different strides.
+//
+// ```novo ignore
+// libopenblas.cblas_dcopy(4, x, 1, y, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dcopy")
 fn cblas_dcopy(n: Int, x: Int, incx: Int, y: Int, incy: Int) [ffi]
 
 // Exchange `n` elements of `x` with `n` elements of `y`.
+//
+// ```novo ignore
+// libopenblas.cblas_dswap(4, x, 1, y, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dswap")
 fn cblas_dswap(n: Int, x: Int, incx: Int, y: Int, incy: Int) [ffi]
 
 // Apply a plane rotation to the pairs taken from `x` and `y`.
 //
-// Each pair becomes `(c * xi + s * yi, c * yi - s * xi)`. `c` and `s`
-// are the cosine and the sine of the angle, and `cblas_drotg` computes
-// a pair that rotates a given point onto the first axis.
+// Each pair `(xi, yi)` becomes `(c * xi + s * yi, c * yi - s * xi)`.
+// `c` and `s` are the cosine and the sine of the angle.  `cblas_drotg`
+// computes a pair that rotates a given point onto the first axis.
+//
+// ```novo ignore
+// libopenblas.cblas_drot(1, x, 1, y, 1, 0.6, 0.8)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_drot")
 fn cblas_drot(n: Int, x: Int, incx: Int, y: Int, incy: Int, c: Float, s: Float) [ffi]
 
@@ -88,32 +127,44 @@ fn cblas_drot(n: Int, x: Int, incx: Int, y: Int, incy: Int, c: Float, s: Float) 
 // first axis.
 //
 // All four arguments are addresses of eight-byte slots the caller owns.
-// `a` and `b` are read and overwritten: `a` becomes the length of the
-// point and `b` becomes the reconstruction parameter. `c` and `s` are
-// written, and they are the two arguments `cblas_drot` wants.
+// `a` and `b` are read and overwritten.  `a` becomes `r`, whose
+// magnitude is the length of the point and whose sign follows the
+// larger of `a` and `b`.  `b` becomes the reconstruction parameter `z`.
+// `c` and `s` receive the cosine and the sine that `cblas_drot` takes.
+//
+// ```novo ignore
+// libopenblas.cblas_drotg(a_slot, b_slot, c_slot, s_slot)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_drotg")
 fn cblas_drotg(a: Int, b: Int, c: Int, s: Int) [ffi]
 
-// ---------------------------------------------------------------------
-// Level 2: matrix against vector.
-// ---------------------------------------------------------------------
+// The level 2 routines, which take a matrix and a vector.
 
-// Compute `y = alpha * A * x + beta * y`, with `A` optionally
-// transposed.
+// Compute `y = alpha * op(A) * x + beta * y`.
 //
 // `order` is 101 for row-major storage and 102 for column-major.
-// `trans` is 111 to use `A` as it stands and 112 to transpose it. `m`
-// and `n` are the rows and the columns of `A` as stored, and `lda` is
-// its leading dimension: the number of elements between the start of
-// one row and the start of the next, in row-major order.
+// `trans` is 111 to use `A` as it stands and 112 to transpose it.  `m`
+// and `n` are the rows and the columns of `A` as stored.  `lda` is its
+// leading dimension, which for row-major storage is the number of
+// elements between the start of one row and the start of the next.  A
+// `beta` of 0.0 overwrites `y`.
+//
+// ```novo ignore
+// libopenblas.cblas_dgemv(101, 111, 2, 2, 1.0, a, 2, x, 1, 0.0, y, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dgemv")
 fn cblas_dgemv(order: Int, trans: Int, m: Int, n: Int, alpha: Float, a: Int, lda: Int, x: Int,
                incx: Int, beta: Float, y: Int, incy: Int) [ffi]
 
 // Add `alpha * x * yᵀ` to the `m` by `n` matrix `A`, in place.
 //
-// The product of a column vector and a row vector is a matrix, and this
-// is the one level-2 routine that writes a matrix rather than a vector.
+// The product of a column vector and a row vector is a matrix.  Of the
+// level 2 routines here, this is the one that writes a matrix rather
+// than a vector.
+//
+// ```novo ignore
+// libopenblas.cblas_dger(101, 2, 2, 1.0, x, 1, y, 1, a, 2)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dger")
 fn cblas_dger(order: Int, m: Int, n: Int, alpha: Float, x: Int, incx: Int, y: Int, incy: Int,
               a: Int, lda: Int) [ffi]
@@ -121,132 +172,194 @@ fn cblas_dger(order: Int, m: Int, n: Int, alpha: Float, x: Int, incx: Int, y: In
 // Compute `y = alpha * A * x + beta * y` for a symmetric `A`.
 //
 // `uplo` is 121 when the upper triangle of `A` holds the matrix and 122
-// when the lower one does. The other triangle is not read.
+// when the lower one does.  The other triangle is not read.
+//
+// ```novo ignore
+// libopenblas.cblas_dsymv(101, 121, 2, 1.0, a, 2, x, 1, 0.0, y, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dsymv")
 fn cblas_dsymv(order: Int, uplo: Int, n: Int, alpha: Float, a: Int, lda: Int, x: Int, incx: Int,
                beta: Float, y: Int, incy: Int) [ffi]
 
-// Replace `x` with `A * x` for a triangular `A`.
+// Replace `x` with `op(A) * x` for a triangular `A`.
 //
-// `diag` is 131 when the diagonal is stored and 132 when every diagonal
-// element is to be treated as 1 whatever is stored there.
+// `uplo` names the triangle that holds `A`, and `trans` is 111 or 112
+// as for `cblas_dgemv`.  `diag` is 131 when the diagonal is stored and
+// 132 when every diagonal element is taken as 1, whatever is stored
+// there.
+//
+// ```novo ignore
+// libopenblas.cblas_dtrmv(101, 122, 111, 131, 2, a, 2, x, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dtrmv")
 fn cblas_dtrmv(order: Int, uplo: Int, trans: Int, diag: Int, n: Int, a: Int, lda: Int, x: Int,
                incx: Int) [ffi]
 
-// Solve `A * x = b` for a triangular `A`, in place.
+// Solve `op(A) * x = b` for a triangular `A`, in place.
 //
-// `x` holds `b` on the way in and the solution on the way out. The
-// routine does not check whether `A` is singular; a zero on the
+// `x` holds `b` on the way in and the solution on the way out.  The
+// routine does not test whether `A` is singular.  A zero on the
 // diagonal gives an infinity or a not-a-number.
+//
+// ```novo ignore
+// libopenblas.cblas_dtrsv(101, 122, 111, 131, 2, a, 2, x, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dtrsv")
 fn cblas_dtrsv(order: Int, uplo: Int, trans: Int, diag: Int, n: Int, a: Int, lda: Int, x: Int,
                incx: Int) [ffi]
 
-// ---------------------------------------------------------------------
-// Level 3: matrix against matrix.
-// ---------------------------------------------------------------------
+// The level 3 routines, which take a matrix and a matrix.
 
 // Compute `C = alpha * op(A) * op(B) + beta * C`.
 //
-// `op` is the identity for 111 and the transpose for 112, chosen
-// separately for each operand. `m`, `n` and `k` are the rows of `op(A)`,
-// the columns of `op(B)` and the shared inner dimension. This is the
-// routine the library exists for, and the one the tuned kernels are
-// written for.
+// `op` is the matrix itself for 111 and its transpose for 112, chosen
+// separately for each operand.  `m`, `n` and `k` are the rows of
+// `op(A)`, the columns of `op(B)` and the shared inner dimension.  This
+// is the general matrix product.
+//
+// ```novo ignore
+// libopenblas.cblas_dgemm(101, 111, 111, 2, 2, 2, 1.0, a, 2, b, 2, 0.0, c, 2)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dgemm")
 fn cblas_dgemm(order: Int, trans_a: Int, trans_b: Int, m: Int, n: Int, k: Int, alpha: Float, a: Int,
                lda: Int, b: Int, ldb: Int, beta: Float, c: Int, ldc: Int) [ffi]
 
-// Compute `C = alpha * A * B + beta * C` for a symmetric `A`.
+// Compute `C = alpha * A * B + beta * C` or `C = alpha * B * A + beta *
+// C` for a symmetric `A`.
 //
-// `side` is 141 when `A` multiplies from the left and 142 from the
-// right. Only the triangle named by `uplo` is read.
+// `side` is 141 when `A` multiplies from the left and 142 when it
+// multiplies from the right.  Only the triangle of `A` named by `uplo`
+// is read.
+//
+// ```novo ignore
+// libopenblas.cblas_dsymm(101, 141, 121, 2, 2, 1.0, a, 2, b, 2, 0.0, c, 2)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dsymm")
 fn cblas_dsymm(order: Int, side: Int, uplo: Int, m: Int, n: Int, alpha: Float, a: Int, lda: Int,
                b: Int, ldb: Int, beta: Float, c: Int, ldc: Int) [ffi]
 
 // Compute `C = alpha * A * Aᵀ + beta * C`, writing one triangle of `C`.
 //
-// `trans` is 111 for `A * Aᵀ` and 112 for `Aᵀ * A`. Only the triangle
-// named by `uplo` is written, because the answer is symmetric.
+// `trans` is 111 for `A * Aᵀ` and 112 for `Aᵀ * A`.  Only the triangle
+// named by `uplo` is written, and the other is left as it was.
+//
+// ```novo ignore
+// libopenblas.cblas_dsyrk(101, 121, 111, 2, 1, 1.0, a, 1, 0.0, c, 2)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dsyrk")
 fn cblas_dsyrk(order: Int, uplo: Int, trans: Int, n: Int, k: Int, alpha: Float, a: Int, lda: Int,
                beta: Float, c: Int, ldc: Int) [ffi]
 
 // Compute `C = alpha * A * Bᵀ + alpha * B * Aᵀ + beta * C`, writing one
 // triangle of `C`.
+//
+// `trans` 112 computes `alpha * Aᵀ * B + alpha * Bᵀ * A + beta * C`
+// instead.  Only the triangle named by `uplo` is written.
+//
+// ```novo ignore
+// libopenblas.cblas_dsyr2k(101, 121, 111, 2, 1, 1.0, a, 1, b, 1, 0.0, c, 2)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dsyr2k")
 fn cblas_dsyr2k(order: Int, uplo: Int, trans: Int, n: Int, k: Int, alpha: Float, a: Int, lda: Int,
                 b: Int, ldb: Int, beta: Float, c: Int, ldc: Int) [ffi]
 
-// Replace `B` with `alpha * op(A) * B`, for a triangular `A`.
+// Replace `B` with `alpha * op(A) * B` or `alpha * B * op(A)`, for a
+// triangular `A`.
 //
-// `side` chooses whether `A` multiplies from the left or the right.
-// `B` is both the input and the output, and `A` is not written.
+// `side` chooses whether `A` multiplies from the left or from the
+// right.  `B` is both the input and the output, and `A` is not written.
+//
+// ```novo ignore
+// libopenblas.cblas_dtrmm(101, 141, 122, 111, 131, 2, 1, 1.0, a, 2, b, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dtrmm")
 fn cblas_dtrmm(order: Int, side: Int, uplo: Int, trans_a: Int, diag: Int, m: Int, n: Int,
                alpha: Float, a: Int, lda: Int, b: Int, ldb: Int) [ffi]
 
-// Solve `op(A) * X = alpha * B` for a triangular `A`, in place.
+// Solve `op(A) * X = alpha * B` or `X * op(A) = alpha * B` for a
+// triangular `A`, in place.
 //
 // `B` holds the right-hand sides on the way in and the solutions on the
-// way out. This is the back-substitution step of a linear solve, and it
-// is what a factorisation is used through.
+// way out.  It is the substitution step that applies a triangular
+// factor to a block of right-hand sides.  The routine does not test
+// whether `A` is singular.
+//
+// ```novo ignore
+// libopenblas.cblas_dtrsm(101, 141, 122, 111, 131, 2, 1, 1.0, a, 2, b, 1)
+// ```
 pub @ffi(library = "openblas", symbol = "cblas_dtrsm")
 fn cblas_dtrsm(order: Int, side: Int, uplo: Int, trans_a: Int, diag: Int, m: Int, n: Int,
                alpha: Float, a: Int, lda: Int, b: Int, ldb: Int) [ffi]
 
-// ---------------------------------------------------------------------
-// The OpenBLAS runtime: threads and the build.
-//
-// These six are OpenBLAS's own, not CBLAS's.  A different BLAS does not
-// export them, and a program that must run against any BLAS calls none
-// of them.
-// ---------------------------------------------------------------------
+// The OpenBLAS runtime calls, which set the threads and describe the
+// build.  They are OpenBLAS's own, not part of CBLAS, and another BLAS
+// library does not export them.
 
 // Set how many threads the library may use.
 //
-// The setting applies to every later call from every thread. A count of
-// 1 makes the library single-threaded, which is what a program that
-// parallelises above the BLAS wants.
+// The setting is global and applies to every later call from every
+// thread.  A count of 1 makes the library single-threaded, which suits
+// a program that runs its own threads above the BLAS.
+//
+// ```novo ignore
+// libopenblas.openblas_set_num_threads(1)
+// ```
 pub @ffi(library = "openblas", symbol = "openblas_set_num_threads")
 fn openblas_set_num_threads(num_threads: Int) [io, ffi]
 
 // Get how many threads the library may use.
 //
-// The answer is a C `int`. It is the number last set, or the number the
-// library chose when it started.
+// The answer is a C `int`.  It is the number last set, or the number
+// the library chose when it started.
+//
+// ```novo ignore
+// let threads = libopenblas.openblas_get_num_threads() as i32
+// ```
 pub @ffi(library = "openblas", symbol = "openblas_get_num_threads")
 fn openblas_get_num_threads() -> Int [io, ffi]
 
 // Get how many processors the library found on the machine.
 //
-// The answer is a C `int`, and it is the ceiling the thread count is
-// chosen under.
+// The answer is a C `int`.
+//
+// ```novo ignore
+// let procs = libopenblas.openblas_get_num_procs() as i32
+// ```
 pub @ffi(library = "openblas", symbol = "openblas_get_num_procs")
 fn openblas_get_num_procs() -> Int [io, ffi]
 
 // Get the configuration the library was built with.
 //
 // Answers the address of a C string the library owns, such as
-// `OpenBLAS 0.3.26 USE64BITINT NO_AFFINITY Haswell MAX_THREADS=64`.
-// Read it with `ptr.read_str` and do not free it. `USE64BITINT` in that
+// `OpenBLAS 0.3.26 DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64`.
+// Read it with `ptr.read_str` and do not free it.  `USE64BITINT` in the
 // string means `blasint` is 64 bits wide rather than 32.
+//
+// ```novo ignore
+// println(ptr.read_str(libopenblas.openblas_get_config()))
+// ```
 pub @ffi(library = "openblas", symbol = "openblas_get_config")
 fn openblas_get_config() -> Int [io, ffi]
 
 // Get the name of the processor kernel the library selected.
 //
-// Answers the address of a C string the library owns, such as `Haswell`.
-// OpenBLAS picks the kernel when it starts, from what the processor
-// reports about itself.
+// Answers the address of a C string the library owns, such as
+// `Haswell`.  OpenBLAS chooses the kernel when it starts, from what the
+// processor reports about itself.
+//
+// ```novo ignore
+// println(ptr.read_str(libopenblas.openblas_get_corename()))
+// ```
 pub @ffi(library = "openblas", symbol = "openblas_get_corename")
 fn openblas_get_corename() -> Int [io, ffi]
 
-// Get which threading model the library was built with.
+// Get the threading model the library was built with.
 //
-// The answer is a C `int`: 0 is a sequential build, 1 is OpenBLAS's own
-// thread pool, and 2 is OpenMP.
+// The answer is a C `int`.  0 is a sequential build, 1 is a build on
+// the platform's threads, such as pthreads, and 2 is OpenMP.
+//
+// ```novo ignore
+// let model = libopenblas.openblas_get_parallel() as i32
+// ```
 pub @ffi(library = "openblas", symbol = "openblas_get_parallel")
 fn openblas_get_parallel() -> Int [io, ffi]

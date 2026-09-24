@@ -1,14 +1,14 @@
-// API tests for the CBLAS bindings over libopenblas.
+// The tests over the CBLAS entry points of the libopenblas bindings.
 //
 // Every test below calls into the C library, so the suite needs
 // OpenBLAS installed and linked.  `novo pkg build` type-checks the
-// declarations without it; `novo test` runs them and does not.
+// declarations without it.  `novo test` runs them and does not.
 //
 // Every test computes in memory, so the suite reads and writes nothing.
 //
-// OpenBLAS was not installed on the machine where this package was
-// written, so the suite has never been linked.  Treat every assertion
-// below as unmeasured.
+// OpenBLAS was not installed on the machines where this package was
+// written and revised, so the suite has never been linked.  Treat every
+// assertion below as unmeasured.
 
 use std.test
 use libopenblas
@@ -63,9 +63,9 @@ fn test_the_library_reports_its_build_and_its_threads() [io, ffi]
     let parallel = libopenblas.openblas_get_parallel() as i32
     test.assert(parallel >= 0)
     test.assert(parallel <= 2)
-    test.assert(libopenblas.openblas_get_num_procs() as i32 >= 1)
+    test.assert((libopenblas.openblas_get_num_procs() as i32) >= 1)
     libopenblas.openblas_set_num_threads(1)
-    test.assert(libopenblas.openblas_get_num_threads() as i32 == 1)
+    test.assert((libopenblas.openblas_get_num_threads() as i32) == 1)
 
 // The dot product, the two norms and the position of the largest
 // element, over the vectors 1..4 and 5..8.
@@ -103,7 +103,7 @@ fn test_a_vector_is_scaled_copied_swapped_and_accumulated() [io, ffi]
     libopenblas.cblas_dscal(3, 2.0, y, 1)
     test.assert(same(get(y, 0), 2.0))
     test.assert(same(get(y, 2), 6.0))
-    // y becomes y + 3x: 2 + 3, 4 + 6, 6 + 9.
+    // y becomes y + 3x, which is 2 + 3, 4 + 6 and 6 + 9.
     libopenblas.cblas_daxpy(3, 3.0, x, 1, y, 1)
     test.assert(same(get(y, 0), 5.0))
     test.assert(same(get(y, 1), 10.0))
@@ -126,7 +126,7 @@ fn test_a_plane_rotation_carries_a_point_onto_the_first_axis() [io, ffi]
     ptr.write_word(a, float.to_bits(3.0))
     ptr.write_word(b, float.to_bits(4.0))
     libopenblas.cblas_drotg(a, b, c, s)
-    // `a` is overwritten with the length of the point.
+    // `a` is overwritten with r, which for this point is its length.
     test.assert(same(float.from_bits(ptr.read_word(a)), 5.0))
     let x = zeros(1)
     let y = zeros(1)
@@ -150,7 +150,7 @@ fn test_a_plane_rotation_carries_a_point_onto_the_first_axis() [io, ffi]
 fn test_a_matrix_multiplies_a_vector() [io, ffi]
     test.case("cblas_dgemv, cblas_dsymv, cblas_dger")
     // A = [[1, 2], [3, 4]] in row-major order, so the leading dimension
-    // is 2: two elements between the start of one row and the next.
+    // is 2, the elements between the start of one row and the next.
     let a = zeros(4)
     put(a, 0, 1.0)
     put(a, 1, 2.0)
