@@ -1,6 +1,6 @@
 [package]
 name        = "libopenblas-sys"
-version     = "0.1.1"
+version     = "0.1.2"
 description = "Bindings over libopenblas, through the CBLAS interface: the double-precision vector, matrix-vector and matrix-matrix routines of levels 1, 2 and 3, and the OpenBLAS thread and build queries, one declaration per C entry point."
 license     = "Apache-2.0"
 
@@ -23,7 +23,7 @@ wraps       = "libopenblas"
 tags        = ["ffi", "openblas", "blas", "cblas", "linear-algebra", "matrix", "bindings"]
 repository  = "https://github.com/novolang/libopenblas-sys"
 maintainers = ["novo-lang"]
-novo        = ">= 0.8.9"
+novo        = ">= 0.23.0"
 
 [docs.pages]
 "README.md" = "The CBLAS entry points of libopenblas, one novo-lang declaration each"
